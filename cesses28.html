@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Шахматы (Онлайн / Оффлайн)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #262421;
+      color: #fff;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 480px;
+      width: 100%;
+      padding: 10px;
+    }
+
+    .controls {
+      background: #312e2b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+
+    .mode-select { margin-bottom: 10px; }
+
+    .control-row {
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+    }
+
+    input, button {
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+    }
+
+    input {
+      background-color: #403d39;
+      color: #fff;
+      text-align: center;
+      width: 160px;
+    }
+
+    button {
+      background-color: #81b64c;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover { background-color: #a3d168; }
+    .btn-secondary { background-color: #45423e; }
+    .btn-secondary:hover { background-color: #5c5853; }
+
+    .btn-ai {
+      background-color: #3b82f6;
+      display: none;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .btn-ai:hover { background-color: #60a5fa; }
+
+    .status {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #bababa;
+    }
+
+    .board-wrapper {
+      position: relative;
+      width: 440px;
+      height: 440px;
+      margin: 0 auto;
+      background: #312e2b;
+      padding: 20px;
+      border-radius: 6px;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      width: 400px;
+      height: 400px;
+      user-select: none;
+    }
+
+    .square {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      cursor: pointer;
+    }
+
+    .white-square { background-color: #ebecd0; color: #739552; }
+    .black-square { background-color: #739552; color: #ebecd0; }
+    .selected { background-color: #bbc233 !important; }
+    .valid-move { background-color: #a3d168 !important; opacity: 0.8; }
+    .highlight { background-color: #f6f669 !important; }
+
+    .coord-files, .coord-ranks {
+      position: absolute;
+      font-size: 12px;
+      font-weight: bold;
+      color: #bababa;
+      display: flex;
+    }
+
+    .coord-files {
+      bottom: 2px;
+      left: 20px;
+      width: 400px;
+      justify-content: space-around;
+    }
+
+    .coord-ranks {
+      top: 20px;
+      left: 4px;
+      height: 400px;
+      flex-direction: column;
+      justify-content: space-around;
+    }
+
+    #ai-suggestion {
+      margin-top: 10px;
+      color: #60a5fa;
+      font-weight: bold;
+      min-height: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Шахматы</h2>
+
+  <div class="controls">
+    <div class="mode-select">
+      <button id="mode-offline-btn">Локальная игра</button>
+      <button id="create-online-btn" class="btn-secondary">Создать Онлайн</button>
+    </div>
+    
+    <div class="control-row">
+      <input type="text" id="join-code-input" placeholder="Код комнаты">
+      <button id="join-btn" class="btn-secondary">Войти по коду</button>
+    </div>
+
+    <div class="control-row">
+      <input type="text" id="admin-code-input" placeholder="">
+      <button id="activate-admin-btn" class="btn-secondary">ОК</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">Ход: БЕЛЫЕ</div>
+
+  <div class="board-wrapper">
+    <div class="coord-ranks">
+      <span>8</span><span>7</span><span>6</span><span>5</span>
+      <span>4</span><span>3</span><span>2</span><span>1</span>
+    </div>
+
+    <div id="board"></div>
+
+    <div class="coord-files">
+      <span>A</span><span>B</span><span>C</span><span>D</span>
+      <span>E</span><span>F</span><span>G</span><span>H</span>
+    </div>
+  </div>
+
+  <button id="ai-btn" class="btn-ai">💡 Подсказка ИИ</button>
+  <div id="ai-suggestion"></div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+<script>
+  const PIECES = {
+    'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'p': '♟',
+    'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔', 'P': '♙'
+  };
+
+  const PIECE_VALUES = {
+    'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 1000,
+    'P': 10, 'N': 30, 'B': 30, 'R': 50, 'Q': 90, 'K': 1000
+  };
+
+  const initialBoard = [
+    ['r','n','b','q','k','b','n','r'],
+    ['p','p','p','p','p','p','p','p'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['P','P','P','P','P','P','P','P'],
+    ['R','N','B','Q','K','B','N','R']
+  ];
+
+  let boardState = JSON.parse(JSON.stringify(initialBoard));
+  let currentTurn = 'W'; 
+  let myColor = 'W';     
+  let isOnline = false;
+  let peer = null;
+  let conn = null;
+  const PREFIX = 'my-chess-game-room-';
+
+  let selectedSquare = null;
+  let validMovesForSelected = [];
+  let highlightedMove = null;
+
+  const boardEl = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const aiBtn = document.getElementById('ai-btn');
+  const aiSuggestionEl = document.getElementById('ai-suggestion');
+  const joinCodeInput = document.getElementById('join-code-input');
+  const adminCodeInput = document.getElementById('admin-code-input');
+
+  function isWhitePiece(p) { return p && p === p.toUpperCase(); }
+  function isBlackPiece(p) { return p && p === p.toLowerCase(); }
+
+  function toNotation(r, c) {
+    const files = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    return `${files[c]}${8 - r}`;
+  }
+
+  function getPieceMoves(r, c, board) {
+    const piece = board[r][c];
+    if (!piece) return [];
+
+    const moves = [];
+    const isWhite = isWhitePiece(piece);
+    const type = piece.toLowerCase();
+
+    const addIfValid = (tr, tc) => {
+      if (tr < 0 || tr >= 8 || tc < 0 || tc >= 8) return false;
+      const target = board[tr][tc];
+      if (!target) {
+        moves.push({ toR: tr, toC: tc });
+        return true;
+      }
+      if (isWhite ? isBlackPiece(target) : isWhitePiece(target)) {
+        moves.push({ toR: tr, toC: tc });
+      }
+      return false;
+    };
+
+    if (type === 'p') {
+      const dir = isWhite ? -1 : 1;
+      const startRank = isWhite ? 6 : 1;
+
+      if (r + dir >= 0 && r + dir < 8 && !board[r + dir][c]) {
+        moves.push({ toR: r + dir, toC: c });
+        if (r === startRank && !board[r + 2 * dir][c]) {
+          moves.push({ toR: r + 2 * dir, toC: c });
+        }
+      }
+      for (let dc of [-1, 1]) {
+        if (c + dc >= 0 && c + dc < 8 && r + dir >= 0 && r + dir < 8) {
+          const target = board[r + dir][c + dc];
+          if (target && (isWhite ? isBlackPiece(target) : isWhitePiece(target))) {
+            moves.push({ toR: r + dir, toC: c + dc });
+          }
+        }
+      }
+    }
+    else if (type === 'n') {
+      const offsets = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+      for (let [dr, dc] of offsets) {
+        addIfValid(r + dr, c + dc);
+      }
+    }
+    else if (type === 'b') {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+      for (let [dr, dc] of dirs) {
+        let step = 1;
+        while (addIfValid(r + dr * step, c + dc * step)) step++;
+      }
+    }
+    else if (type === 'r') {
+      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+      for (let [dr, dc] of dirs) {
+        let step = 1;
+        while (addIfValid(r + dr * step, c + dc * step)) step++;
+      }
+    }
+    else if (type === 'q') {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+      for (let [dr, dc] of dirs) {
+        let step = 1;
+        while (addIfValid(r + dr * step, c + dc * step)) step++;
+      }
+    }
+    else if (type === 'k') {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+      for (let [dr, dc] of dirs) {
+        addIfValid(r + dr, c + dc);
+      }
+    }
+
+    return moves;
+  }
+
+  function renderBoard() {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const square = document.createElement('div');
+        const isWhite = (r + c) % 2 === 0;
+        square.className = `square ${isWhite ? 'white-square' : 'black-square'}`;
+
+        const piece = boardState[r][c];
+        if (piece) {
+          square.innerText = PIECES[piece] || piece;
+        }
+
+        if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+          square.classList.add('selected');
+        }
+
+        if (validMovesForSelected.some(m => m.toR === r && m.toC === c)) {
+          square.classList.add('valid-move');
+        }
+
+        if (highlightedMove && 
+           ((highlightedMove.fromR === r && highlightedMove.fromC === c) || 
+            (highlightedMove.toR === r && highlightedMove.toC === c))) {
+          square.classList.add('highlight');
+        }
+
+        square.addEventListener('click', () => handleSquareClick(r, c));
+        boardEl.appendChild(square);
+      }
+    }
+  }
+
+  function handleSquareClick(r, c) {
+    const piece = boardState[r][c];
+
+    if (isOnline && currentTurn !== myColor) return;
+
+    if (selectedSquare) {
+      if (selectedSquare.r === r && selectedSquare.c === c) {
+        selectedSquare = null;
+        validMovesForSelected = [];
+        renderBoard();
+        return;
+      }
+
+      const isMoveLegal = validMovesForSelected.some(m => m.toR === r && m.toC === c);
+
+      if (isMoveLegal) {
+        executeMove(selectedSquare.r, selectedSquare.c, r, c);
+
+        if (isOnline && conn) {
+          conn.send({ type: 'move', fromR: selectedSquare.r, fromC: selectedSquare.c, toR: r, toC: c });
+        }
+
+        selectedSquare = null;
+        validMovesForSelected = [];
+        highlightedMove = null;
+        return;
+      }
+
+      if (piece && ((currentTurn === 'W' && isWhitePiece(piece)) || (currentTurn === 'B' && isBlackPiece(piece)))) {
+        selectedSquare = { r, c };
+        validMovesForSelected = getPieceMoves(r, c, boardState);
+        renderBoard();
+        return;
+      }
+
+      return;
+    }
+
+    if (piece) {
+      if ((currentTurn === 'W' && isWhitePiece(piece)) || (currentTurn === 'B' && isBlackPiece(piece))) {
+        selectedSquare = { r, c };
+        validMovesForSelected = getPieceMoves(r, c, boardState);
+        renderBoard();
+      }
+    }
+  }
+
+  function executeMove(fromR, fromC, toR, toC) {
+    const p = boardState[fromR][fromC];
+    if (!p) return;
+
+    if (p === 'P' && toR === 0) boardState[toR][toC] = 'Q';
+    else if (p === 'p' && toR === 7) boardState[toR][toC] = 'q';
+    else boardState[toR][toC] = p;
+
+    boardState[fromR][fromC] = '';
+
+    currentTurn = currentTurn === 'W' ? 'B' : 'W';
+    updateStatusText();
+    aiSuggestionEl.innerText = '';
+    renderBoard();
+  }
+
+  function updateStatusText() {
+    const turnText = currentTurn === 'W' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ';
+    statusEl.innerText = `Ход: ${turnText}` + (isOnline ? ` (Вы: ${myColor === 'W' ? 'Белые' : 'Черные'})` : '');
+  }
+
+  document.getElementById('mode-offline-btn').addEventListener('click', () => {
+    isOnline = false;
+    boardState = JSON.parse(JSON.stringify(initialBoard));
+    currentTurn = 'W';
+    selectedSquare = null;
+    validMovesForSelected = [];
+    updateStatusText();
+    renderBoard();
+  });
+
+  document.getElementById('create-online-btn').addEventListener('click', () => {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    peer = new Peer(PREFIX + code);
+
+    peer.on('open', () => {
+      isOnline = true;
+      myColor = 'W';
+      currentTurn = 'W';
+      statusEl.innerHTML = `Комната: <b>${code}</b>. Ждем друга...`;
+      renderBoard();
+    });
+
+    peer.on('connection', (c) => {
+      conn = c;
+      setupP2P();
+      statusEl.innerText = 'Друг подключился! Ваш ход (Белые).';
+    });
+  });
+
+  document.getElementById('join-btn').addEventListener('click', () => {
+    const inputVal = joinCodeInput.value.trim();
+
+    if (!inputVal) return;
+
+    peer = new Peer();
+    peer.on('open', () => {
+      conn = peer.connect(PREFIX + inputVal);
+      conn.on('open', () => {
+        isOnline = true;
+        myColor = 'B';
+        currentTurn = 'W';
+        setupP2P();
+        statusEl.innerText = 'Подключено! Ходят Белые.';
+        renderBoard();
+      });
+    });
+  });
+
+  document.getElementById('activate-admin-btn').addEventListener('click', () => {
+    const val = adminCodeInput.value.trim();
+    if (val === '73') {
+      aiBtn.style.display = 'block';
+      adminCodeInput.value = '';
+    }
+  });
+
+  function setupP2P() {
+    conn.on('data', (data) => {
+      if (data.type === 'move') {
+        executeMove(data.fromR, data.fromC, data.toR, data.toC);
+      }
+    });
+  }
+
+  function generateAllLegalMoves(color) {
+    const moves = [];
+    const isWhite = color === 'W';
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = boardState[r][c];
+        if (!piece) continue;
+        if (isWhite && !isWhitePiece(piece)) continue;
+        if (!isWhite && !isBlackPiece(piece)) continue;
+
+        const pieceMoves = getPieceMoves(r, c, boardState);
+        for (let m of pieceMoves) {
+          moves.push({ fromR: r, fromC: c, toR: m.toR, toC: m.toC });
+        }
+      }
+    }
+    return moves;
+  }
+
+  aiBtn.addEventListener('click', () => {
+    const legalMoves = generateAllLegalMoves(currentTurn);
+    if (legalMoves.length === 0) return;
+
+    let bestMove = null;
+    let bestScore = -9999;
+
+    for (let move of legalMoves) {
+      const targetPiece = boardState[move.toR][move.toC];
+      let score = targetPiece ? (PIECE_VALUES[targetPiece] || 10) * 10 : 0;
+
+      if ((move.toR === 3 || move.toR === 4) && (move.toC === 3 || move.toC === 4)) score += 5;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+    }
+
+    if (bestMove) {
+      highlightedMove = bestMove;
+      const fromStr = toNotation(bestMove.fromR, bestMove.fromC);
+      const toStr = toNotation(bestMove.toR, bestMove.toC);
+      aiSuggestionEl.innerText = `💡 Рекомендация ИИ: ${fromStr} ➔ ${toStr}`;
+      renderBoard();
+    }
+  });
+
+  renderBoard();
+</script>
+</body>
+</html>
